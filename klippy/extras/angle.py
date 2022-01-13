@@ -274,29 +274,48 @@ class Angle:
         # Measurement storage (accessed from background thread)
         self.lock = threading.Lock()
         self.raw_samples = []
+        
         # Sensor type
+        # WL let's say that spi_mode = 0 means ABN...uuuuuuh  
         sensors = { "a1333": (3, 10000000, .000001),
                     "as5047d": (1, int(1. / .000000350), .000100),
-                    "tle5012b": (1, 4000000, 0.) }
+                    "tle5012b": (1, 4000000, 0.),
+                    "atm102": (0, 0,0.)
+                     }
+
         self.sensor_type = config.getchoice('sensor_type',
                                             {s: s for s in sensors})
         spi_mode, spi_speed, self.static_delay = sensors[self.sensor_type]
+
         # Setup mcu sensor_spi_angle bulk query code
-        self.spi = bus.MCU_SPI_from_config(config, spi_mode,
+        if(spi_mode):
+            self.spi = bus.MCU_SPI_from_config(config, spi_mode,
                                            default_speed=spi_speed)
-        self.mcu = mcu = self.spi.get_mcu()
-        self.oid = oid = mcu.create_oid()
-        self.query_spi_angle_cmd = self.query_spi_angle_end_cmd = None
-        self.spi_angle_transfer_cmd = None
-        mcu.add_config_cmd(
-            "config_spi_angle oid=%d spi_oid=%d spi_angle_type=%s"
-            % (oid, self.spi.get_oid(), self.sensor_type))
-        mcu.add_config_cmd(
-            "query_spi_angle oid=%d clock=0 rest_ticks=0 time_shift=0"
-            % (oid,), on_restart=True)
-        mcu.register_config_callback(self._build_config)
-        mcu.register_response(self._handle_spi_angle_data,
+            self.mcu = mcu = self.spi.get_mcu()
+            self.oid = oid = mcu.create_oid()
+            self.query_spi_angle_cmd = self.query_spi_angle_end_cmd = None
+            self.spi_angle_transfer_cmd = None
+            mcu.add_config_cmd(
+                "config_spi_angle oid=%d spi_oid=%d spi_angle_type=%s"
+                % (oid, self.spi.get_oid(), self.sensor_type))
+            mcu.add_config_cmd(
+                "query_spi_angle oid=%d clock=0 rest_ticks=0 time_shift=0"
+                % (oid,), on_restart=True)
+            mcu.register_config_callback(self._build_config)
+            mcu.register_response(self._handle_spi_angle_data,
                               "spi_angle_data", oid)
+        
+        # if spi_mode == 0 sensor is ABN
+        #else:
+        #    # TODO how to get mcu?
+        #    self.oid = oid = mcu.create_oid()
+        #    self.query_abn_angle_cmd = self.query_abn_angle_end_cmd = None
+        #    self.abn_angle_transfer_cmd = None
+        #    mcu.add_config_cmd(
+        #        "config_abn_angle oid=%d spi_angle_type=%s"
+        #        % (oid, self.spi.get_oid(), self.sensor_type))
+
+       
         # API server endpoints
         self.api_dump = motion_report.APIDumpHelper(
             self.printer, self._api_update, self._api_startstop, 0.100)
