@@ -280,7 +280,7 @@ class Angle:
         sensors = { "a1333": (3, 10000000, .000001),
                     "as5047d": (1, int(1. / .000000350), .000100),
                     "tle5012b": (1, 4000000, 0.),
-                    "atm102": (0, 0,0.)
+                    "abn": (0, 0, 0.)
                      }
 
         self.sensor_type = config.getchoice('sensor_type',
@@ -305,16 +305,34 @@ class Angle:
             mcu.register_response(self._handle_spi_angle_data,
                               "spi_angle_data", oid)
         
-        # if spi_mode == 0 sensor is ABN
-        #else:
-        #    # TODO how to get mcu?
-        #    self.oid = oid = mcu.create_oid()
-        #    self.query_abn_angle_cmd = self.query_abn_angle_end_cmd = None
-        #    self.abn_angle_transfer_cmd = None
-        #    mcu.add_config_cmd(
-        #        "config_abn_angle oid=%d spi_angle_type=%s"
-        #        % (oid, self.spi.get_oid(), self.sensor_type))
+        # WL if spi_mode == 0 sensor is ABN
+        # pin config borrowed from spi_temperature.py
+        else:
+            ppins = config.get_printer().lookup_object("pins") # get pin register
+            ppar = ppins.lookup_pin(config.get('pin_a'))
+            self.mcu = mcu = ppar['chip']
+            self.oid = oid = mcu.create_oid()
+            self.query_abn_angle_cmd = None 
+            self.query_abn_angle_end_cmd = None
+            self.abn_angle_transfer_cmd = None
+            mcu.add_config_cmd(
+                "config_abn_angle oid=%d abn_angle_type=%s"
+                % (oid, self.sensor_type))
+            mcu.add_config_cmd(
+                "query_abn_angle oid=%d clock=0 rest_ticks=0 time_shift=0"
+                % (oid,), on_restart=True)
 
+            self.query_abn_angle_cmd = self.mcu.lookup_command(
+                "query_abn_angle oid=%c clock=%u rest_ticks=%u time_shift=%c")
+            self.query_abn_angle_end_cmd = self.mcu.lookup_query_command(
+                "query_abn_angle oid=%c clock=%u rest_ticks=%u time_shift=%c",
+                "abn_angle_end oid=%c sequence=%hu", oid=self.oid)
+            self.abn_angle_transfer_cmd = self.mcu.lookup_query_command(
+                "abn_angle_transfer oid=%c data=%*s",
+                "abn_angle_transfer_response oid=%c clock=%u response=%*s", oid=self.oid)
+
+            mcu.register_response(self._handle_abn_angle_data,
+                              "abn_angle_data", oid)
        
         # API server endpoints
         self.api_dump = motion_report.APIDumpHelper(
@@ -490,7 +508,12 @@ class Angle:
         self.start_clock = reqclock = self.mcu.print_time_to_clock(print_time)
         rest_ticks = self.mcu.seconds_to_clock(self.sample_period)
         self.sample_ticks = rest_ticks
-        self.query_spi_angle_cmd.send([self.oid, reqclock, rest_ticks,
+
+        if self.sensor_type == "abn":
+            self.query_abn_angle_cmd.send([self.oid, reqclock, rest_ticks,
+                                       self.time_shift], reqclock=reqclock)
+        else:
+            self.query_spi_angle_cmd.send([self.oid, reqclock, rest_ticks,
                                        self.time_shift], reqclock=reqclock)
     def _finish_measurements(self):
         if not self.is_measuring():
@@ -513,6 +536,10 @@ class Angle:
         web_request.send({'header': hdr})
     def start_internal_client(self):
         return self.api_dump.add_internal_client()
+
+# WL why kev only uses config_prefix?
+def load_config(config):
+    return Angle(config)
 
 def load_config_prefix(config):
     return Angle(config)
