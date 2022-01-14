@@ -26,6 +26,7 @@ struct abn_angle {
     uint16_t sequence;
     uint8_t flags, data_count, time_shift, overflow;
 
+    TIM_TypeDef* htim2;
     // add timer and channels from A,B,N pins
     // add ACC reg
     uint8_t data[48];
@@ -73,6 +74,18 @@ command_config_abn_angle(uint32_t *args)
     abna->pin_b = pin_b
     abna->timer.func = angle_event;
 
+    TIMx_ARR
+
+    if (abna->htim2->CR1 & TIM_CR1_CEN) {
+        if (p->timer->PSC != (uint16_t) prescaler) {
+            shutdown("PWM already programmed at different speed");
+        }
+    } else {
+        abna->htim2->PSC = 0;
+        abna->htim2->ARR = 8192;
+
+        abna->htim2->TIMx_SMCR 
+    }
     // TODO now configure hw timer i.e. TI1 and TI2 on TIM2 (PA0,PA1).. 
     //no prescaler, encoder mode T1 and T2 
 
